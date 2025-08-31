@@ -1,10 +1,13 @@
 import math
 import numpy as np
-import tkinter as tk
-from tkinter import ttk, messagebox
 import matplotlib.pyplot as plt
 from scipy.spatial import ConvexHull
 from gen_poly_pts import generate_vertices
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QRadioButton, QLineEdit, QGroupBox, QPushButton, QButtonGroup
+)
+import sys
 
 def cartesian_to_spherical(x, y, z):
     # Limiter z à la plage [-1, 1] pour éviter l'erreur math domain error
@@ -68,58 +71,101 @@ def plot_with_division(verts, faces, freq, classe, title):
     ax.set_title(title)
     plt.show()
 
-def show_selection_and_run():
-    poly = poly_var.get()
-    try:
-        freq = int(freq_var.get())
-    except ValueError:
-        messagebox.showerror("Erreur", "Fréquence doit être un entier positif.")
-        return
+class PolyhedronConfigWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Configuration du Polyèdre / Division")
 
-    classe = classe_var.get()
-    if classe == "Classe 2" and freq % 2 != 0:
-        messagebox.showerror("Erreur", "Classe 2 requiert une fréquence paire.")
-        return
+        # Conteneur principal
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QVBoxLayout(central_widget)
 
-    root.destroy()
+        # Choix du polyèdre
+        poly_label = QLabel("Choix du polyèdre:")
+        main_layout.addWidget(poly_label)
 
-    # Appel de la fonction avec l'argument apex_type fixé à "sommet"
-    verts = generate_vertices(poly, apex_type="sommet")
-    pts = np.array(verts, dtype=float)
-    hull = ConvexHull(pts)
-    faces = hull.simplices.tolist()
+        self.poly_group = QButtonGroup(self)
+        poly_layout = QVBoxLayout()
+        for p in ("Tétraèdre", "Octaèdre", "Icosaèdre"):
+            radio = QRadioButton(p)
+            self.poly_group.addButton(radio)
+            poly_layout.addWidget(radio)
+        main_layout.addLayout(poly_layout)
 
-    print(f"Polyèdre: {poly}, Fréquence: {freq}, Classe: {classe}")
-    for i, (x,y,z) in enumerate(verts, 1):
-        phi, theta, r = cartesian_to_spherical(x, y, z)
-        print(f"  Sommet {i:2d}: Φ={phi:.8f}, θ={theta:.8f}, r={r:.1f}")
+        # Paramètre de division
+        div_group = QGroupBox("Division")
+        div_layout = QVBoxLayout(div_group)
+        main_layout.addWidget(div_group)
 
-    plot_with_division(verts, faces, freq, classe, title=f"{poly} subdivisé, classe {classe}, freq {freq}")
+        freq_layout = QHBoxLayout()
+        freq_label = QLabel("Fréquence:")
+        freq_layout.addWidget(freq_label)
 
-# --- GUI ---
-root = tk.Tk()
-root.title("Configuration du Polyèdre / Division")
+        self.freq_input = QLineEdit()
+        self.freq_input.setText("1")
+        self.freq_input.setFixedWidth(50)
+        freq_layout.addWidget(self.freq_input)
+        div_layout.addLayout(freq_layout)
 
-# Choix du polyèdre
-ttk.Label(root, text="Choix du polyèdre:").pack(anchor="w", padx=10, pady=2)
-poly_var = tk.StringVar(value="Tétraèdre")
-for p in ("Tétraèdre", "Octaèdre", "Icosaèdre"):
-    ttk.Radiobutton(root, text=p, variable=poly_var, value=p).pack(anchor="w", padx=20)
+        # Choix de la classe
+        class_layout = QHBoxLayout()
+        self.class_group = QButtonGroup(self)
 
-# Paramètre de division
-div_frame = ttk.LabelFrame(root, text="Division")
-div_frame.pack(fill="x", padx=10, pady=5)
+        class1_radio = QRadioButton("Classe 1")
+        class1_radio.setChecked(True)
+        self.class_group.addButton(class1_radio)
+        class_layout.addWidget(class1_radio)
 
-ttk.Label(div_frame, text="Fréquence:").grid(row=0, column=0, padx=5, pady=5, sticky="w")
-freq_var = tk.StringVar(value="1")
-ttk.Entry(div_frame, textvariable=freq_var, width=5).grid(row=0, column=1, padx=5, pady=5)
+        class2_radio = QRadioButton("Classe 2")
+        self.class_group.addButton(class2_radio)
+        class_layout.addWidget(class2_radio)
 
-# Choix de la classe
-classe_var = tk.StringVar(value="Classe 1")
-ttk.Radiobutton(div_frame, text="Classe 1", variable=classe_var, value="Classe 1").grid(row=1, column=0, padx=5, pady=2)
-ttk.Radiobutton(div_frame, text="Classe 2", variable=classe_var, value="Classe 2").grid(row=1, column=1, padx=5, pady=2)
+        div_layout.addLayout(class_layout)
 
-# Bouton de validation
-ttk.Button(root, text="Valider", command=show_selection_and_run).pack(pady=10)
+        # Bouton de validation
+        validate_button = QPushButton("Valider")
+        validate_button.clicked.connect(self.show_selection_and_run)
+        main_layout.addWidget(validate_button)
 
-root.mainloop()
+    def show_selection_and_run(self):
+        poly = None
+        for button in self.poly_group.buttons():
+            if button.isChecked():
+                poly = button.text()
+                break
+
+        try:
+            freq = int(self.freq_input.text())
+        except ValueError:
+            print("Erreur: Fréquence doit être un entier positif.")
+            return
+
+        classe = None
+        for button in self.class_group.buttons():
+            if button.isChecked():
+                classe = button.text()
+                break
+
+        if classe == "Classe 2" and freq % 2 != 0:
+            print("Erreur: Classe 2 requiert une fréquence paire.")
+            return
+
+        # Appel de la fonction avec l'argument apex_type fixé à "sommet"
+        verts = generate_vertices(poly, apex_type="sommet")
+        pts = np.array(verts, dtype=float)
+        hull = ConvexHull(pts)
+        faces = hull.simplices.tolist()
+
+        print(f"Polyèdre: {poly}, Fréquence: {freq}, Classe: {classe}")
+        for i, (x,y,z) in enumerate(verts, 1):
+            phi, theta, r = cartesian_to_spherical(x, y, z)
+            print(f"  Sommet {i:2d}: Φ={phi:.8f}, θ={theta:.8f}, r={r:.1f}")
+
+        plot_with_division(verts, faces, freq, classe, title=f"{poly} subdivisé, classe {classe}, freq {freq}")
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = PolyhedronConfigWindow()
+    window.show()
+    sys.exit(app.exec_())
